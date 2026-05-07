@@ -1,0 +1,243 @@
+"""
+Manual Mode Pipeline for StyleConditionedGenerativePipeline
+
+This module implements the manual mode where:
+1. User provides a Style JSON
+2. System generates a prompt using Prompt Generator
+3. System outputs the prompt and instructions
+4. User manually generates image in ChatGPT
+5. User provides feedback (optional)
+
+This mode is used to validate Prompt Generator quality before implementing automation.
+"""
+
+import json
+from pathlib import Path
+from typing import Dict, Optional, Tuple
+
+from ..core.schema import validate_style_json
+from ..core.engine import StyleEngine
+from ..core.prompt_generator import PromptGenerator
+
+
+class ManualModePipeline:
+    """Pipeline for manual image generation workflow"""
+    
+    def __init__(self):
+        self.engine = StyleEngine()
+        self.prompt_generator = PromptGenerator()
+    
+    def generate_prompt_for_manual_use(
+        self,
+        style_json: Dict,
+        subject: str = "a landscape",
+        validate: bool = True
+    ) -> Tuple[bool, Dict]:
+        """
+        Generate a prompt from Style JSON for manual use in ChatGPT.
+        
+        Args:
+            style_json: The style parameters
+            subject: The subject to generate (default: "a landscape")
+            validate: Whether to validate the Style JSON (default: True)
+        
+        Returns:
+            Tuple of (success, result)
+            - If success: result contains 'prompt', 'negative_prompt', 'instructions'
+            - If failure: result contains 'error' and 'details'
+        """
+        # Step 1: Validate Style JSON
+        if validate:
+            is_valid, errors = validate_style_json(style_json)
+            if not is_valid:
+                return False, {
+                    'error': 'Invalid Style JSON',
+                    'details': errors
+                }
+        
+        # Step 2: Normalize Style JSON
+        try:
+            normalized_style = self.engine.normalize(style_json)
+        except Exception as e:
+            return False, {
+                'error': 'Style normalization failed',
+                'details': str(e)
+            }
+        
+        # Step 3: Generate prompt
+        try:
+            prompt = self.prompt_generator.generate(normalized_style, subject=subject)
+            negative_prompt = self.prompt_generator.get_negative_prompt(normalized_style)
+        except Exception as e:
+            return False, {
+                'error': 'Prompt generation failed',
+                'details': str(e)
+            }
+        
+        # Step 4: Generate instructions for user
+        instructions = self._generate_instructions(prompt, negative_prompt)
+        
+        return True, {
+            'prompt': prompt,
+            'negative_prompt': negative_prompt,
+            'instructions': instructions,
+            'normalized_style': normalized_style
+        }
+    
+    def _generate_instructions(self, prompt: str, negative_prompt: str) -> str:
+        """Generate step-by-step instructions for manual image generation"""
+        instructions = f"""
+=== Manual Image Generation Instructions ===
+
+1. Open ChatGPT (https://chat.openai.com)
+
+2. Use the following prompt:
+
+---PROMPT START---
+{prompt}
+---PROMPT END---
+
+3. If the image generation tool supports negative prompts, use:
+
+---NEGATIVE PROMPT START---
+{negative_prompt}
+---NEGATIVE PROMPT END---
+
+4. Generate the image and save it
+
+5. (Optional) If you want to iterate:
+   - Describe what aspects don't match the expected style
+   - We can adjust the Style JSON and regenerate the prompt
+
+=== Tips ===
+- DALL-E 3 in ChatGPT doesn't support negative prompts directly
+- You may need to add negative constraints to the main prompt
+- Generate 2-3 variations to see consistency
+- Save all generated images for comparison
+
+=== Next Steps ===
+After generating images:
+1. Evaluate if the style matches your expectations
+2. If not satisfied, provide feedback on what's wrong
+3. We'll adjust the Style JSON and try again
+"""
+        return instructions.strip()
+    
+    def save_prompt_to_file(
+        self,
+        prompt: str,
+        negative_prompt: str,
+        output_path: Path,
+        style_json: Optional[Dict] = None
+    ) -> bool:
+        """
+        Save generated prompt to a file for later use.
+        
+        Args:
+            prompt: The main prompt
+            negative_prompt: The negative prompt
+            output_path: Path to save the file
+            style_json: Optional Style JSON to include
+        
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            content = {
+                'prompt': prompt,
+                'negative_prompt': negative_prompt,
+                'timestamp': None,  # Will be set by caller if needed
+            }
+            
+            if style_json:
+                content['style_json'] = style_json
+            
+            with open(output_path, 'w', encoding='utf-8') as f:
+                json.dump(content, f, indent=2, ensure_ascii=False)
+            
+            return True
+        except Exception:
+            return False
+    
+    def load_prompt_from_file(self, input_path: Path) -> Tuple[bool, Dict]:
+        """
+        Load a previously saved prompt from file.
+        
+        Args:
+            input_path: Path to the saved prompt file
+        
+        Returns:
+            Tuple of (success, data)
+        """
+        try:
+            with open(input_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            required_keys = ['prompt', 'negative_prompt']
+            if not all(key in data for key in required_keys):
+                return False, {'error': 'Missing required keys in file'}
+            
+            return True, data
+        except Exception as e:
+            return False, {'error': str(e)}
+
+
+def run_manual_mode_interactive():
+    """
+    Interactive CLI for manual mode.
+    This is a convenience function for testing.
+    """
+    import sys
+    
+    print("=== StyleConditionedGenerativePipeline - Manual Mode ===\n")
+    
+    # Get Style JSON path
+    if len(sys.argv) < 2:
+        print("Usage: python -m src.pipeline.manual_mode <style_json_path> [subject]")
+        print("\nExample:")
+        print("  python -m src.pipeline.manual_mode styles/watercolor.json 'a mountain landscape'")
+        sys.exit(1)
+    
+    style_json_path = Path(sys.argv[1])
+    subject = sys.argv[2] if len(sys.argv) > 2 else "a landscape"
+    
+    # Load Style JSON
+    try:
+        with open(style_json_path, 'r', encoding='utf-8') as f:
+            style_json = json.load(f)
+    except Exception as e:
+        print(f"Error loading Style JSON: {e}")
+        sys.exit(1)
+    
+    # Generate prompt
+    pipeline = ManualModePipeline()
+    success, result = pipeline.generate_prompt_for_manual_use(style_json, subject=subject)
+    
+    if not success:
+        print(f"Error: {result['error']}")
+        print(f"Details: {result['details']}")
+        sys.exit(1)
+    
+    # Display results
+    print(result['instructions'])
+    print("\n" + "="*60 + "\n")
+    
+    # Optionally save to file
+    output_dir = Path("output/prompts")
+    output_path = output_dir / f"{style_json_path.stem}_prompt.json"
+    
+    if pipeline.save_prompt_to_file(
+        result['prompt'],
+        result['negative_prompt'],
+        output_path,
+        style_json=result['normalized_style']
+    ):
+        print(f"✓ Prompt saved to: {output_path}")
+    else:
+        print("✗ Failed to save prompt to file")
+
+
+if __name__ == "__main__":
+    run_manual_mode_interactive()
