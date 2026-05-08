@@ -1,245 +1,237 @@
 # StyleConditionedGenerativePipeline
 
-**风格条件化生成管道系统** - 一个基于结构化参数空间的可控图像风格迁移系统
+A deterministic, style-conditioned image generation pipeline that extracts, optimizes, and applies visual styles.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+## Features
 
----
+- **Style Extraction**: Extract visual style parameters from reference images
+- **Style Optimization**: Iteratively optimize styles to match reference quality
+- **Multiple Modes**: Manual, Learning, Auto, and Production modes
+- **Deterministic**: Same input → same output (where possible)
+- **Modular**: Use individual components or complete pipelines
 
-## 🎯 项目简介
-
-StyleConditionedGenerativePipeline 不是一个"提示词工程工具"，而是一个**风格条件化的优化系统**：
-
-```
-视觉风格 → 结构化参数空间（Style JSON） → 可优化的生成系统
-```
-
-### 核心功能
-
-#### 1. Learning Mode（风格学习模式）
-```
-输入图片 → 提取 Style JSON → 迭代优化 → 生成符合风格的新图片
-```
-- 自动提取图片的风格参数
-- 通过闭环优化确保生成图片符合参考风格
-- 支持 6 个维度的精确控制（color、line、lighting、composition、material、detail_density）
-
-#### 2. Production Mode（风格生产模式）
-```
-加载已保存的 Style JSON → 直接生成图片
-```
-- 从风格库加载预定义风格
-- 确定性生成（相同输入 → 相同输出）
-- 无需优化循环，快速生成
-
----
-
-## 🏗️ 系统架构
-
-### 核心模块
+## Architecture
 
 ```
-┌─────────────┐
-│  Extractor  │ → 图片 → Style JSON（结构化参数）
-└─────────────┘
-       ↓
-┌─────────────┐
-│Style Engine │ → 归一化 Style JSON（9步流程）
-└─────────────┘
-       ↓
-┌─────────────┐
-│Prompt Gen   │ → Style JSON → 固定格式文本提示词
-└─────────────┘
-       ↓
-┌─────────────┐
-│Image Gen    │ → 提示词 → 生成图片
-└─────────────┘
-       ↓
-┌─────────────┐
-│ Evaluator   │ → 对比生成图片与参考风格 → 6维分数 + adjustments
-└─────────────┘
-       ↓
-┌─────────────┐
-│ Optimizer   │ → 根据 adjustments 更新 Style JSON
-└─────────────┘
-       ↓
-    （循环）
+┌─────────────────────────────────────────────────────────────┐
+│                    Core Modules                              │
+├─────────────────────────────────────────────────────────────┤
+│ Schema → Engine → Prompt Generator → Style Library          │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│                   Pipeline Modes                             │
+├─────────────────────────────────────────────────────────────┤
+│ Manual Mode    → Generate prompts for manual use            │
+│ Learning Mode  → Optimize style through iteration           │
+│ Auto Mode      → Fully automated (LLM + DALL-E 3)          │
+│ Production Mode→ Fast generation from library               │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### 关键特性
-
-- **确定性**: 相同输入 → 相同输出（数值容差 ±0.02）
-- **可优化性**: 基于结构化参数空间的梯度近似优化
-- **可解释性**: 6 个维度独立评分，明确的调整方向
-- **可扩展性**: 模块化设计，易于替换和扩展
-
----
-
-## 📊 Style JSON 示例
-
-```json
-{
-  "style_id": "watercolor_architecture_v1",
-  "composition": {
-    "perspective": "isometric",
-    "layout": "centered",
-    "depth": 0.6
-  },
-  "line": {
-    "type": "clean",
-    "width": 1.2,
-    "variation": 0.1,
-    "locked": true
-  },
-  "color": {
-    "palette": ["#F5E6D3", "#8B9556", "#8B7355"],
-    "saturation": 0.35,
-    "contrast": 0.4,
-    "temperature": "warm"
-  },
-  "material": {
-    "type": "watercolor",
-    "texture_strength": 0.5,
-    "locked": true
-  },
-  "lighting": {
-    "type": "soft_global",
-    "direction": "top_left",
-    "intensity": 0.3
-  },
-  "detail_density": {
-    "foreground": 0.8,
-    "background": 0.3
-  },
-  "negative_constraints": [
-    "no photorealism",
-    "no harsh shadows"
-  ]
-}
-```
-
----
-
-## 🚀 快速开始
-
-### 安装
+## Installation
 
 ```bash
-# 克隆仓库
+# Clone repository
 git clone https://github.com/RiddleBox/StyleConditionedGenerativePipeline.git
 cd StyleConditionedGenerativePipeline
 
-# 安装依赖
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 使用方式
+## Quick Start
 
-#### 方式 1：手动模式（推荐入门）
-1. 使用 `skills/extractor/SKILL.md` 在 ChatGPT 中提取 Style JSON
-2. 运行 Pipeline 生成 Prompt
-3. 手动在 ChatGPT 中生成图片
+### Manual Mode (No API Required)
 
-#### 方式 2：自动模式（需要 API）
 ```python
-from src.pipeline.learning_mode import LearningModePipeline
+from src.pipeline.manual_mode import ManualModePipeline
 
-pipeline = LearningModePipeline(
-    extractor_api="openai",
-    generator_api="dalle3"
+# Define style
+style = {
+    "palette": ["#FF6B6B", "#4ECDC4", "#45B7D1"],
+    "color_temperature": "warm",
+    "saturation_level": 0.75,
+    # ... other parameters
+}
+
+# Generate prompt
+pipeline = ManualModePipeline()
+result = pipeline.generate_prompt_for_manual_use(
+    style=style,
+    subject="a serene landscape"
 )
 
-result = pipeline.run(
-    image_path="input.jpg",
-    content="cozy rooftop terrace scene"
+# Save and use in ChatGPT
+pipeline.save_prompt_to_file(result, "prompt.txt")
+```
+
+### Auto Mode (Fully Automated)
+
+```python
+from src.pipeline.auto_mode import AutoModePipeline
+from PIL import Image
+
+# Set API key
+import os
+os.environ["OPENAI_API_KEY"] = "your-key-here"
+
+# Load reference image
+reference = Image.open("reference.jpg")
+
+# Create pipeline
+pipeline = AutoModePipeline()
+
+# Learn from reference
+result = pipeline.learn_from_reference(
+    reference_image=reference,
+    style_name="my_style",
+    subject="abstract art",
+    max_iterations=5,
+    target_score=0.85
+)
+
+# Generate new images
+image = pipeline.generate_from_library(
+    style_name="my_style",
+    subject="a cat in a garden"
 )
 ```
 
-#### 方式 3：OpenClaw 集成
+## Pipeline Modes
+
+### 1. Manual Mode
+- **Use case**: Generate prompts for manual use in ChatGPT/Midjourney
+- **Requirements**: None (no API needed)
+- **Workflow**: Style JSON → Prompt → Manual generation
+
+### 2. Learning Mode
+- **Use case**: Optimize style through iterative refinement
+- **Requirements**: Manual image generation per iteration
+- **Workflow**: Initial style → Generate → Evaluate → Optimize → Repeat
+
+### 3. Auto Mode
+- **Use case**: Fully automated style learning and generation
+- **Requirements**: OpenAI API key (GPT-4V + DALL-E 3)
+- **Workflow**: Reference image → LLM extraction → Auto generation → Optimization
+
+### 4. Production Mode
+- **Use case**: Fast generation using pre-saved styles
+- **Requirements**: OpenAI API key (DALL-E 3)
+- **Workflow**: Load from library → Generate
+
+## Style JSON Format
+
+```json
+{
+  "palette": ["#FF0000", "#00FF00", "#0000FF", "#FFFF00", "#FF00FF"],
+  "color_temperature": "warm",
+  "color_harmony": "complementary",
+  "saturation_level": 0.75,
+  "brightness_level": 0.65,
+  "contrast_level": 0.55,
+  "line_style": "smooth",
+  "line_weight": 0.6,
+  "line_density": 0.5,
+  "lighting_direction": "side",
+  "lighting_quality": "soft",
+  "shadow_intensity": 0.4,
+  "composition_rule": "rule_of_thirds",
+  "focal_point": "center",
+  "depth_of_field": 0.6,
+  "material_finish": "matte",
+  "texture_scale": 0.5,
+  "detail_level": 0.7
+}
+```
+
+## Testing
+
 ```bash
-# 在 OpenClaw 中直接使用
-@openclaw 用这张图片的风格生成一个新场景
+# Run all tests
+pytest tests/ -v
+
+# Run unit tests only
+pytest tests/test_*.py -v
+
+# Run integration tests
+pytest tests/integration/ -v
+
+# Run with coverage
+pytest tests/ --cov=src --cov-report=html
 ```
 
----
-
-## 📁 项目结构
+## Project Structure
 
 ```
 StyleConditionedGenerativePipeline/
-├── docs/                    # 核心设计文档（9个规范 + 实施计划）
 ├── src/
-│   ├── core/                # 核心模块（Schema、Engine、Prompt Generator、Library）
-│   ├── extractor/           # 风格提取器
-│   ├── generator/           # 图像生成器
-│   ├── evaluator/           # 风格评估器
-│   ├── optimizer/           # 参数优化器
-│   └── pipeline/            # 管道编排
-├── skills/                  # OpenClaw Skills
-├── tests/                   # 单元测试
-└── config/                  # 配置文件
+│   ├── core/              # Core modules
+│   │   ├── schema.py      # Style JSON validation
+│   │   ├── engine.py      # Style normalization
+│   │   ├── prompt_generator.py
+│   │   └── library.py     # Style storage (SQLite)
+│   ├── extractor/         # Style extraction
+│   │   └── llm_extractor.py
+│   ├── generator/         # Image generation
+│   │   └── dalle_generator.py
+│   ├── evaluator/         # Quality evaluation
+│   │   ├── clip_evaluator.py
+│   │   ├── structured_metrics.py
+│   │   └── evaluator_v2.py
+│   ├── optimizer/         # Style optimization
+│   │   └── optimizer.py
+│   └── pipeline/          # Complete pipelines
+│       ├── manual_mode.py
+│       ├── learning_mode.py
+│       ├── auto_mode.py
+│       └── production_mode.py
+├── tests/
+│   ├── test_*.py          # Unit tests
+│   └── integration/       # Integration tests
+├── examples/
+│   └── usage_examples.py
+└── data/
+    └── style_library.db   # Saved styles
 ```
 
----
+## Development Status
 
-## 📚 核心文档
+- ✅ Phase 1: Core modules (Schema, Engine, Prompt Generator, Library)
+- ✅ Phase 2: Extractor Skill (prompt-based)
+- ✅ Phase 3: Manual Mode Pipeline
+- ✅ Phase 4: Evaluator v2 (CLIP + structured metrics)
+- ✅ Phase 5: Optimizer + Learning Mode
+- ✅ Phase 6: Auto Mode (LLM + DALL-E 3)
+- 🔄 Phase 7: End-to-end integration tests
 
-1. [统一实施计划](./docs/IMPLEMENTATION_PLAN.md) - **唯一权威实施方案**
-2. [三向映射表](./docs/Style_Evaluator_Optimizer_Mapping_Contract.md) - 系统核心契约
-3. [Style JSON Schema 规范](./docs/Style_JSON_Schema_Deep_Specification_v1.md)
-4. [Pipeline 集成规范](./docs/Style_Pipeline_Integration_Specification_v2.1.md)
+## API Costs (Estimated)
 
-完整文档列表见 [docs/](./docs/) 目录。
+### Learning Mode (5 iterations)
+- LLM extraction: ~$0.03 (3 samples × GPT-4V)
+- DALL-E 3 generation: $0.20 (5 iterations × $0.04)
+- **Total**: ~$0.23 per style
 
----
+### Production Mode
+- DALL-E 3 standard 1024×1024: $0.04 per image
+- DALL-E 3 HD 1024×1024: $0.08 per image
+- DALL-E 3 standard 1792×1024: $0.08 per image
+- DALL-E 3 HD 1792×1024: $0.12 per image
 
-## 🔧 技术栈
+## License
 
-- **Extractor**: GPT-4V / Claude 3.5 Sonnet
-- **Image Generator**: DALL-E 3 / Midjourney
-- **Evaluator**: CLIP + OpenCV + scikit-learn
-- **Style Library**: SQLite
-- **测试框架**: pytest
+MIT License
 
----
+## Contributing
 
-## 📊 开发进度
+Contributions welcome! Please open an issue or PR.
 
-| Phase | 任务 | 状态 |
-|-------|------|------|
-| Phase 0 | 项目初始化 | 🟡 进行中 |
-| Phase 1 | 核心模块 | ⚪ 未开始 |
-| Phase 2 | Extractor（Skill） | ⚪ 未开始 |
-| Phase 3 | Image Generator（手动） | ⚪ 未开始 |
-| Phase 4 | Evaluator v2 | ⚪ 未开始 |
-| Phase 5 | Optimizer + Pipeline | ⚪ 未开始 |
-| Phase 6 | 自动化 | ⚪ 未开始 |
-| Phase 7 | OpenClaw 集成 | ⚪ 未开始 |
+## Acknowledgments
 
-详细进度见 [IMPLEMENTATION_PLAN.md](./docs/IMPLEMENTATION_PLAN.md)
-
----
-
-## 🤝 贡献
-
-欢迎贡献！请先阅读 [IMPLEMENTATION_PLAN.md](./docs/IMPLEMENTATION_PLAN.md) 了解项目架构和开发规范。
-
----
-
-## 📄 许可证
-
-MIT License - 详见 [LICENSE](./LICENSE) 文件
-
----
-
-## 🙏 致谢
-
-本项目的设计灵感来自：
-- 风格迁移领域的经典研究
-- 可控生成系统的工程实践
-- OpenClaw 社区的反馈和建议
-
----
-
-**项目状态**: 🚧 开发中 | **最后更新**: 2026-05-06
+- OpenAI CLIP for semantic similarity
+- OpenAI DALL-E 3 for image generation
+- Anthropic Claude for vision understanding
